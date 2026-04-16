@@ -1,0 +1,1 @@
+Placeholder so //go:embed has at least one file in a fresh clone. Vite overwrites index.html and the assets/ directory on `npm run build` but leaves this file alone.

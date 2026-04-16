@@ -1,0 +1,10 @@
+node_modules/
+web/node_modules/
+webdist/dist/index.html
+webdist/dist/assets/
+data/enable.txt
+data/enable.txt.gz
+data/nwl2023.txt
+data/nwl2023.txt.gz
+/scrabble-server
+/server
