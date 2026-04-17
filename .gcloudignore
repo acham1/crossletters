@@ -6,8 +6,8 @@ webdist/dist/assets
 webdist/dist/sw.js
 /server
 /scrabble-server
-data/nwl2023.txt
-data/nwl2023.txt.gz
+data/enable.txt
 data/enable.txt.gz
+data/nwl2023.txt.gz
 infra/.terraform
 infra/terraform.tfstate*

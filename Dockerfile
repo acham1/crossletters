@@ -17,12 +17,12 @@ COPY internal/ internal/
 COPY webdist/webdist.go webdist/webdist.go
 COPY webdist/dist/placeholder.txt webdist/dist/placeholder.txt
 COPY --from=frontend /app/webdist/dist/ webdist/dist/
-COPY data/enable.txt data/enable.txt
+COPY data/nwl2023.txt data/nwl2023.txt
 RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
 
 # Stage 3: Minimal runtime
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=backend /server /server
-COPY --from=backend /app/data/enable.txt /data/enable.txt
+COPY --from=backend /app/data/nwl2023.txt /data/nwl2023.txt
 ENTRYPOINT ["/server"]
-CMD ["-addr", "0.0.0.0:8080", "-dict", "/data/enable.txt", "-dev-login=false"]
+CMD ["-addr", "0.0.0.0:8080", "-dict", "/data/nwl2023.txt", "-dev-login=false"]
