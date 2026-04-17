@@ -66,7 +66,10 @@ export const api = {
 export async function setupPushSubscription(): Promise<void> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   try {
-    const { key } = await api.pushVapidKey();
+    // Fetch VAPID key directly to avoid noisy console errors when push isn't configured.
+    const resp = await fetch("/api/push/vapid-key", { credentials: "include" });
+    if (!resp.ok) return;
+    const { key } = (await resp.json()) as { key: string };
     if (!key) return;
     const reg = await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;

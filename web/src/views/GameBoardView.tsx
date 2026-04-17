@@ -59,12 +59,51 @@ export function GameBoardView({
     [game, pending],
   );
 
+  const isYour = game != null && game.yourPlayerIdx >= 0 && game.currentIdx === game.yourPlayerIdx && game.status === "active";
+  const myPlayer = game != null && game.yourPlayerIdx >= 0 ? game.players[game.yourPlayerIdx] : null;
+  const rack = myPlayer?.rack ?? [];
+
+  // Tap-to-place: tap a rack tile to select, then tap an empty board cell.
+  const handleRackTap = useCallback((rackIdx: number) => {
+    if (!isYour || exchangeMode) return;
+    setSubmitError(null);
+    setInvalidWords([]);
+    setSelectedRackIdx((prev) => (prev === rackIdx ? null : rackIdx));
+  }, [isYour, exchangeMode]);
+
+  const handleCellTap = useCallback((row: number, col: number) => {
+    if (!isYour || selectedRackIdx === null) return;
+    if (game!.board.squares[row][col] || pending.some((p) => p.row === row && p.col === col)) return;
+    if (rackUsed.has(selectedRackIdx)) { setSelectedRackIdx(null); return; }
+    const letter = rack[selectedRackIdx];
+    if (letter === "?") {
+      setBlankPrompt({ row, col, rackIdx: selectedRackIdx });
+    } else {
+      setPending((prev) => [...prev, { row, col, letter, blank: false, rackIdx: selectedRackIdx }]);
+    }
+    setSelectedRackIdx(null);
+    setSubmitError(null);
+    setInvalidWords([]);
+  }, [isYour, selectedRackIdx, game, pending, rack, rackUsed]);
+
+  // Keyboard: Escape recalls last tile, Enter submits.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (pending.length > 0) {
+          setPending((prev) => prev.slice(0, -1));
+          setSubmitError(null);
+          setInvalidWords([]);
+        }
+        setSelectedRackIdx(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [pending.length]);
+
   if (loading && !game) return <div className="center muted">Loading game…</div>;
   if (!game) return <div className="center error">Failed to load: {error}</div>;
-
-  const isYour = game.yourPlayerIdx >= 0 && game.currentIdx === game.yourPlayerIdx && game.status === "active";
-  const myPlayer = game.yourPlayerIdx >= 0 ? game.players[game.yourPlayerIdx] : null;
-  const rack = myPlayer?.rack ?? [];
 
   const resetSubmitErrors = () => {
     setSubmitError(null);
@@ -217,42 +256,6 @@ export function GameBoardView({
       setBusy(false);
     }
   };
-
-  // Tap-to-place: tap a rack tile to select, then tap an empty board cell.
-  const handleRackTap = useCallback((rackIdx: number) => {
-    if (!isYour || exchangeMode) return;
-    resetSubmitErrors();
-    setSelectedRackIdx((prev) => (prev === rackIdx ? null : rackIdx));
-  }, [isYour, exchangeMode]);
-
-  const handleCellTap = useCallback((row: number, col: number) => {
-    if (!isYour || selectedRackIdx === null) return;
-    if (game!.board.squares[row][col] || pending.some((p) => p.row === row && p.col === col)) return;
-    if (rackUsed.has(selectedRackIdx)) { setSelectedRackIdx(null); return; }
-    const letter = rack[selectedRackIdx];
-    if (letter === "?") {
-      setBlankPrompt({ row, col, rackIdx: selectedRackIdx });
-    } else {
-      setPending((prev) => [...prev, { row, col, letter, blank: false, rackIdx: selectedRackIdx }]);
-    }
-    setSelectedRackIdx(null);
-    resetSubmitErrors();
-  }, [isYour, selectedRackIdx, game, pending, rack, rackUsed]);
-
-  // Keyboard: Escape recalls last tile, Enter submits.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (pending.length > 0) {
-          setPending((prev) => prev.slice(0, -1));
-          resetSubmitErrors();
-        }
-        setSelectedRackIdx(null);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [pending.length]);
 
   const inviteUrl = `${window.location.origin}/?invite=${encodeURIComponent(game.inviteCode)}`;
 
