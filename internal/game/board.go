@@ -63,8 +63,7 @@ func (b *Board) IsEmpty() bool {
 // PremiumAt returns the premium multiplier type for the square.
 func PremiumAt(row, col int) Premium { return premiumLayout[row][col] }
 
-// premiumLayout is the standard English Scrabble premium-square grid.
-// See en.wikipedia.org/wiki/Scrabble#Board for the canonical layout.
+// premiumLayout is the standard premium-square grid layout.
 var premiumLayout = func() [BoardSize][BoardSize]Premium {
 	var p [BoardSize][BoardSize]Premium
 	set := func(prem Premium, coords ...[2]int) {

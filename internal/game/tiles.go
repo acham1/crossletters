@@ -21,7 +21,7 @@ var LetterValues = map[Letter]int{
 	Blank: 0,
 }
 
-// LetterCounts is the standard English Scrabble letter distribution (100 tiles).
+// LetterCounts is the standard English letter distribution (100 tiles).
 var LetterCounts = map[Letter]int{
 	'A': 9, 'B': 2, 'C': 2, 'D': 4, 'E': 12, 'F': 2, 'G': 3, 'H': 2,
 	'I': 9, 'J': 1, 'K': 1, 'L': 4, 'M': 2, 'N': 6, 'O': 8, 'P': 2,

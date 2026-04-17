@@ -1,6 +1,6 @@
-# not-scrabble
+# crossletters
 
-Self-hostable, turn-based, async Scrabble. Single Go binary that serves the JSON
+Self-hostable, turn-based, async word game. Single Go binary that serves the JSON
 API and an embedded React/TypeScript frontend. Runs on Cloud Run + GCS in
 production; also works fully offline with an in-memory store for local
 development.
@@ -79,15 +79,11 @@ The service scales to zero (`min-instances=0`) so idle cost is $0.
 
 ## Dictionary
 
-Production uses **NWL2023** (NASPA Word List 2023), the official North American
-tournament Scrabble dictionary. NWL2023 is copyrighted and not included in the
-repo — keep your copy under `data/` (already `.gitignore`'d).
-
-For local development, the server falls back to a tiny built-in list (~78
-common words) if no dictionary file is found. The fallback is enough to
+On startup the server loads a word list from the `-dict` flag. If no file is
+found it falls back to a tiny built-in list (~78 common words) — enough to
 sanity-check a play flow but too small for real games.
 
-Fetch ENABLE (public domain, 172,819 words) as a free alternative:
+Fetch ENABLE (public domain, 172,819 words) for a good default:
 
 ```sh
 curl -o data/enable.txt https://norvig.com/ngrams/enable1.txt
@@ -96,16 +92,18 @@ curl -o data/enable.txt https://norvig.com/ngrams/enable1.txt
 Point `-dict` at any newline-separated word file:
 
 ```sh
-go run ./cmd/server -dict data/nwl2023.txt
+go run ./cmd/server -dict data/enable.txt
 # or the gzipped form
-go run ./cmd/server -dict data/nwl2023.txt.gz
+go run ./cmd/server -dict data/enable.txt.gz
 ```
+
+Word list files under `data/` are `.gitignore`'d.
 
 ## Project layout
 
 ```
 cmd/server/         # main.go — HTTP server entrypoint
-internal/game/      # pure Scrabble engine (board, bag, rack, scoring, validation)
+internal/game/      # game engine (board, bag, rack, scoring, validation)
 internal/dict/      # newline-separated word-list loader
 internal/store/     # game/user persistence (in-memory + GCS backends)
 internal/httpapi/   # HTTP handlers, auth (Google + dev), allowlist
@@ -122,7 +120,7 @@ survives rebuilds.
 
 ## Gameplay rules
 
-Standard English Scrabble:
+Standard rules:
 - 15×15 board with canonical TW/DW/TL/DL premium-square layout; centre is DW.
 - 100-tile bag with the canonical letter distribution, 2 blanks at 0 pts.
 - Racks of 7 tiles, refilled from the bag after each play.

@@ -19,7 +19,7 @@ export function BoardGrid({
   for (const p of pending) pendingMap.set(`${p.row},${p.col}`, p);
 
   return (
-    <div className="board" role="grid" aria-label="Scrabble board">
+    <div className="board" role="grid" aria-label="Game board">
       {Array.from({ length: 15 }).map((_, row) => (
         <div key={row} className="board-row" role="row">
           {Array.from({ length: 15 }).map((_, col) => {

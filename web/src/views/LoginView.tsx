@@ -107,7 +107,7 @@ export function LoginView({ onLogin }: { onLogin: (u: UserSummary) => void }) {
   return (
     <div className="center">
       <div className="login-card">
-        <h1>not-scrabble</h1>
+        <h1>crossletters</h1>
 
         {config.googleClientId && (
           <>

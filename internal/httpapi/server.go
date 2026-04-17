@@ -338,7 +338,7 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 		nextIdx := updated.Turn % len(updated.Players)
 		nextPlayer := updated.Players[nextIdx]
 		go s.deps.Push.Notify(context.Background(), nextPlayer.UserID, push.Notification{
-			Title: "not-scrabble",
+			Title: "crossletters",
 			Body:  id.Name + " played — it's your turn!",
 			URL:   "/?game=" + gameID,
 		})

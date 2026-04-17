@@ -1,7 +1,7 @@
 // Service worker for Web Push notifications.
 self.addEventListener("push", (event) => {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || "not-scrabble";
+  const title = data.title || "crossletters";
   const options = {
     body: data.body || "It's your turn!",
     icon: data.icon,

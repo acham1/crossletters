@@ -55,7 +55,7 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1 className="logo">not-scrabble</h1>
+        <h1 className="logo">crossletters</h1>
         <div className="topbar-right">
           <span className="muted">{user.name}</span>
           <button
