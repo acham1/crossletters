@@ -15,3 +15,41 @@ variable "image_tag" {
   type        = string
   default     = "latest"
 }
+
+variable "google_client_id" {
+  description = "Google OAuth client ID for Sign-In"
+  type        = string
+  default     = ""
+}
+
+variable "session_secret" {
+  description = "Hex-encoded HMAC key for session cookies"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "allowlist_emails" {
+  description = "Comma-separated emails allowed to sign in (empty = open)"
+  type        = string
+  default     = ""
+}
+
+variable "vapid_public_key" {
+  description = "VAPID public key for Web Push"
+  type        = string
+  default     = ""
+}
+
+variable "vapid_private_key" {
+  description = "VAPID private key for Web Push"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "vapid_contact" {
+  description = "VAPID contact email (e.g. mailto:you@example.com)"
+  type        = string
+  default     = ""
+}

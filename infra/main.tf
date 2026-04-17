@@ -119,6 +119,54 @@ resource "google_cloud_run_v2_service" "app" {
         value = google_storage_bucket.state.name
       }
 
+      dynamic "env" {
+        for_each = var.google_client_id != "" ? [1] : []
+        content {
+          name  = "GOOGLE_CLIENT_ID"
+          value = var.google_client_id
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.session_secret != "" ? [1] : []
+        content {
+          name  = "SESSION_SECRET"
+          value = var.session_secret
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.allowlist_emails != "" ? [1] : []
+        content {
+          name  = "ALLOWLIST_EMAILS"
+          value = var.allowlist_emails
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.vapid_public_key != "" ? [1] : []
+        content {
+          name  = "VAPID_PUBLIC_KEY"
+          value = var.vapid_public_key
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.vapid_private_key != "" ? [1] : []
+        content {
+          name  = "VAPID_PRIVATE_KEY"
+          value = var.vapid_private_key
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.vapid_contact != "" ? [1] : []
+        content {
+          name  = "VAPID_CONTACT"
+          value = var.vapid_contact
+        }
+      }
+
       resources {
         limits = {
           cpu    = "1"
