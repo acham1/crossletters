@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "./api/client";
+import { api, ApiError, setupPushSubscription } from "./api/client";
 import type { UserSummary } from "./api/types";
 import { LoginView } from "./views/LoginView";
 import { LobbyView } from "./views/LobbyView";
@@ -23,7 +23,10 @@ export function App() {
   useEffect(() => {
     api
       .me()
-      .then(setUser)
+      .then((u) => {
+        setUser(u);
+        setupPushSubscription();
+      })
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.status === 401) setUser(null);
         else {
@@ -58,7 +61,8 @@ export function App() {
           <button
             className="btn-link"
             onClick={async () => {
-              await api.devLogout();
+              try { await api.googleLogout(); } catch {}
+              try { await api.devLogout(); } catch {}
               setUser(null);
             }}
           >

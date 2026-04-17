@@ -7,9 +7,13 @@ import type { PendingPlacement } from "../views/GameBoardView";
 export function BoardGrid({
   board,
   pending,
+  onCellTap,
+  selectedRackIdx,
 }: {
   board: Board;
   pending: PendingPlacement[];
+  onCellTap?: (row: number, col: number) => void;
+  selectedRackIdx?: number | null;
 }) {
   const pendingMap = new Map<string, PendingPlacement>();
   for (const p of pending) pendingMap.set(`${p.row},${p.col}`, p);
@@ -29,6 +33,8 @@ export function BoardGrid({
                 committed={committed}
                 pending={pendingTile}
                 premium={premiumAt(row, col)}
+                tappable={selectedRackIdx != null && !committed && !pendingTile}
+                onTap={onCellTap}
               />
             );
           })}
@@ -44,12 +50,16 @@ function BoardCell({
   committed,
   pending,
   premium,
+  tappable,
+  onTap,
 }: {
   row: number;
   col: number;
   committed: { letter: string; blank: boolean } | null;
   pending: PendingPlacement | undefined;
   premium: Premium;
+  tappable?: boolean;
+  onTap?: (row: number, col: number) => void;
 }) {
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: `cell-${row}-${col}` });
   const hasTile = committed || pending;
@@ -58,11 +68,13 @@ function BoardCell({
     <div
       ref={dropRef}
       role="gridcell"
+      onClick={tappable && onTap ? () => onTap(row, col) : undefined}
       className={[
         "cell",
         `premium-${premium}`,
         hasTile ? "has-tile" : "",
         isOver ? "cell-over" : "",
+        tappable ? "cell-tappable" : "",
         row === 7 && col === 7 ? "center-star" : "",
       ]
         .filter(Boolean)

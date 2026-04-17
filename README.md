@@ -1,9 +1,9 @@
 # not-scrabble
 
 Self-hostable, turn-based, async Scrabble. Single Go binary that serves the JSON
-API and an embedded React/TypeScript frontend. Designed to later run on Cloud
-Run + GCS but currently uses an in-memory store so you can play end-to-end on
-your laptop with no cloud setup.
+API and an embedded React/TypeScript frontend. Runs on Cloud Run + GCS in
+production; also works fully offline with an in-memory store for local
+development.
 
 ## Quick start (local)
 
@@ -19,9 +19,9 @@ go run ./cmd/server
 
 Open http://127.0.0.1:8080 in one browser, then open a second browser (or a
 private window) for the other player. The dev-login form on the landing page
-takes any `userId` + display name and sets a cookie — no Google Sign-In wired
-up yet. Create a game in one window, copy the invite code into the other,
-join, then have the creator click **Start game**.
+takes any `userId` + display name and sets a cookie. Create a game in one
+window, copy the invite code into the other, join, then have the creator
+click **Start game**.
 
 ### Dev loop with hot reload
 
@@ -100,10 +100,12 @@ keep any local copy under `data/` (already `.gitignore`'d) and do not commit.
 cmd/server/         # main.go — HTTP server entrypoint
 internal/game/      # pure Scrabble engine (board, bag, rack, scoring, validation)
 internal/dict/      # newline-separated word-list loader
-internal/store/     # game/user persistence (in-memory today, GCS later)
-internal/httpapi/   # HTTP handlers, request/response types, auth middleware
+internal/store/     # game/user persistence (in-memory + GCS backends)
+internal/httpapi/   # HTTP handlers, auth (Google + dev), allowlist
+internal/push/      # Web Push (VAPID) notification sender
 web/                # React + TypeScript + Vite frontend
 webdist/            # Go package that //go:embeds the built frontend
+infra/              # Terraform for GCP (Cloud Run, GCS, IAM, Artifact Registry)
 ```
 
 The Go binary embeds `webdist/dist/` at build time via `//go:embed`. A
@@ -136,8 +138,11 @@ replayable from the turn history for debugging.
 
 | Method | Path                           | Body / purpose                             |
 |-------:|:-------------------------------|:-------------------------------------------|
+| GET    | `/api/auth/config`             | available auth methods                     |
 | POST   | `/api/auth/dev/login`          | `{userId, name}` — local dev login         |
 | POST   | `/api/auth/dev/logout`         | clears dev cookie                          |
+| POST   | `/api/auth/google/callback`    | `{credential}` — Google ID token exchange  |
+| POST   | `/api/auth/google/logout`      | clears session cookie                      |
 | GET    | `/api/users/me`                | current user                               |
 | GET    | `/api/users/me/games`          | list my games                              |
 | POST   | `/api/games`                   | create a new game (creator is player 1)    |
@@ -145,54 +150,49 @@ replayable from the turn history for debugging.
 | GET    | `/api/games/{id}`              | redacted game state for the caller         |
 | POST   | `/api/games/{id}/start`        | creator starts when 2–4 players have joined |
 | POST   | `/api/games/{id}/plays`        | `{type: "play"\|"exchange"\|"pass", ...}`   |
+| GET    | `/api/push/vapid-key`          | VAPID public key for push subscription     |
+| POST   | `/api/push/subscribe`          | store a Web Push subscription              |
+| GET    | `/healthz`                     | health check                               |
 
 Other players' racks and the bag contents are redacted server-side by
 `viewFor()`; only a tile count is exposed.
 
-## Next steps
+## Features
 
-Rough priority order; pick any block and go:
+All major planned features are implemented:
 
-1. **GCS-backed store** (`internal/store/gcs.go`). Drop-in for `store.Store`
-   using `cloud.google.com/go/storage` with `x-goog-if-generation-match`
-   preconditions on `UpdateGame`. Add an integration test against
-   [fake-gcs-server](https://github.com/fsouza/fake-gcs-server), including a
-   simulated racing write that must be rejected with 412.
-2. **Google Sign-In** (`internal/auth/google.go`). Swap `DevAuth` for an
-   `Authenticator` that verifies ID tokens with
-   `google.golang.org/api/idtoken`, extracts `sub`/`email`/`name`, and sets a
-   short-lived session cookie. Wire the Google Identity Services script into
-   the frontend login view. Keep `DevAuth` behind the `-dev-login` flag for
-   local hacking.
-3. **Optional email allowlist** (`internal/auth/allowlist.go`). Gate access
-   to an invite-only set of Google accounts. Config resolution order:
-   - unset → open (anyone with a Google account can sign in),
-   - `ALLOWLIST_EMAILS=alice@x.com,bob@y.com` → parse inline,
-   - `ALLOWLIST_GCS=gs://bucket/allowlist.txt` → fetch + cache with a
-     ~5-minute refresh, so you can edit the object in the console without
-     redeploying.
-   Check happens after ID-token verification; reject with 403 before any
-   user record is created. Case-insensitive match on the verified `email`
-   claim. Expose a tiny `GET /api/auth/status` so the frontend can render
-   "you're not on the guest list" cleanly instead of a bare 403.
-4. **Cloud Run deploy.** 3-stage `Dockerfile` (node build → go build →
-   distroless/static). `gcloud run deploy --source=.`. Bucket + dedicated
-   service account with `roles/storage.objectAdmin` scoped to the one bucket.
-   Configure via env: `BUCKET_NAME`, `GOOGLE_CLIENT_ID`, optional
-   `ALLOWLIST_EMAILS` or `ALLOWLIST_GCS`. Keep `min-instances=0` so the free
-   tier actually stays free. Document the one-off bucket-create and IAM
-   setup in this README.
-5. **Web Push for turn alerts.** Generate VAPID keys; `POST /api/push/subscribe`
-   stores the subscription under the user's Google `sub` so laptop + phone
-   both get pinged. Server fires a push after each turn commit. Fall back to
-   polling (already wired) when a browser has no subscription.
-6. **UX polish.** Tap-to-place as an alternative to drag (for phones that
-   don't handle `TouchSensor` well); game-history view; "recall last tile"
-   keyboard shortcut; exchange confirmation modal; end-game summary screen
-   with per-player leftover tiles.
-7. **Operational niceties.** Structured request logging, a `/healthz` for
-   Cloud Run, a cron job that garbage-collects `invites/*.json` older than
-   N days, a daily billing-alert budget.
+- **GCS-backed store** — optimistic concurrency via `x-goog-if-generation-match`;
+  falls back to in-memory store for local dev.
+- **Google Sign-In** — session cookies with HMAC-SHA256; dev login still
+  available behind `-dev-login` flag.
+- **Email allowlist** — `ALLOWLIST_EMAILS=a@x.com,b@y.com` (inline) or
+  `ALLOWLIST_GCS=gs://bucket/file.txt` (refreshed every 5 min). Unset = open.
+- **Cloud Run deployment** — Terraform in `infra/`, 3-stage Dockerfile,
+  scales to zero.
+- **Web Push notifications** — VAPID-based; server pings the next player
+  after each turn. Service worker registered on login.
+- **UX polish** — tap-to-place (mobile-friendly), Escape recalls last tile,
+  client-side score preview, end-game summary with winners.
+- **`/healthz`** endpoint for Cloud Run health checks.
 
-The original plan (architecture/cost reasoning) lives at
-`/Users/alan/.claude/plans/snappy-wiggling-wand.md`.
+### Environment variables (production)
+
+| Variable | Required | Purpose |
+|:---------|:---------|:--------|
+| `BUCKET_NAME` | yes | GCS bucket for game/user state |
+| `GOOGLE_CLIENT_ID` | yes | Google OAuth client ID |
+| `SESSION_SECRET` | yes | HMAC key for session cookies (hex) |
+| `ALLOWLIST_EMAILS` | no | Comma-separated allowed emails |
+| `ALLOWLIST_GCS` | no | `gs://bucket/object` path to allowlist file |
+| `VAPID_PUBLIC_KEY` | no | VAPID public key for Web Push |
+| `VAPID_PRIVATE_KEY` | no | VAPID private key for Web Push |
+| `VAPID_CONTACT` | no | Contact email for VAPID (e.g. `mailto:you@example.com`) |
+
+## Possible future work
+
+- Game history/replay view
+- Exchange confirmation modal
+- Structured request logging
+- Invite code garbage collection cron
+- Daily billing-alert budget
+- Per-device push subscription persistence (currently in-memory)

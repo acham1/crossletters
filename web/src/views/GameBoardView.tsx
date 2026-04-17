@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -41,6 +41,7 @@ export function GameBoardView({
   const [exchangeMode, setExchangeMode] = useState(false);
   const [exchangeSelection, setExchangeSelection] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [selectedRackIdx, setSelectedRackIdx] = useState<number | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -217,6 +218,42 @@ export function GameBoardView({
     }
   };
 
+  // Tap-to-place: tap a rack tile to select, then tap an empty board cell.
+  const handleRackTap = useCallback((rackIdx: number) => {
+    if (!isYour || exchangeMode) return;
+    resetSubmitErrors();
+    setSelectedRackIdx((prev) => (prev === rackIdx ? null : rackIdx));
+  }, [isYour, exchangeMode]);
+
+  const handleCellTap = useCallback((row: number, col: number) => {
+    if (!isYour || selectedRackIdx === null) return;
+    if (game!.board.squares[row][col] || pending.some((p) => p.row === row && p.col === col)) return;
+    if (rackUsed.has(selectedRackIdx)) { setSelectedRackIdx(null); return; }
+    const letter = rack[selectedRackIdx];
+    if (letter === "?") {
+      setBlankPrompt({ row, col, rackIdx: selectedRackIdx });
+    } else {
+      setPending((prev) => [...prev, { row, col, letter, blank: false, rackIdx: selectedRackIdx }]);
+    }
+    setSelectedRackIdx(null);
+    resetSubmitErrors();
+  }, [isYour, selectedRackIdx, game, pending, rack, rackUsed]);
+
+  // Keyboard: Escape recalls last tile, Enter submits.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (pending.length > 0) {
+          setPending((prev) => prev.slice(0, -1));
+          resetSubmitErrors();
+        }
+        setSelectedRackIdx(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [pending.length]);
+
   const inviteUrl = `${window.location.origin}/?invite=${encodeURIComponent(game.inviteCode)}`;
 
   return (
@@ -272,7 +309,7 @@ export function GameBoardView({
           </section>
         )}
 
-        <BoardGrid board={game.board} pending={pending} />
+        <BoardGrid board={game.board} pending={pending} onCellTap={handleCellTap} selectedRackIdx={selectedRackIdx} />
 
         {game.status === "active" && myPlayer && (
           <>
@@ -282,6 +319,8 @@ export function GameBoardView({
               exchangeMode={exchangeMode}
               exchangeSelection={exchangeSelection}
               onToggleExchange={toggleExchangeTile}
+              selectedIdx={selectedRackIdx}
+              onTileTap={handleRackTap}
             />
 
             {!exchangeMode && pending.length > 0 && scorePreview && (
@@ -365,6 +404,36 @@ export function GameBoardView({
               )}
             </div>
           </>
+        )}
+
+        {game.status === "completed" && (
+          <section className="panel end-game-summary">
+            <h3>Game Over</h3>
+            {game.winners && game.winners.length > 0 && (
+              <p>
+                Winner{game.winners.length > 1 ? "s" : ""}:{" "}
+                <strong>{game.winners.map((i) => game.players[i]?.name).join(", ")}</strong>
+              </p>
+            )}
+            <table className="end-game-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Score</th>
+                  <th>Tiles left</th>
+                </tr>
+              </thead>
+              <tbody>
+                {game.players.map((p) => (
+                  <tr key={p.userId}>
+                    <td>{p.name}</td>
+                    <td className="score-value">{p.score}</td>
+                    <td className="muted">{p.rackSize > 0 ? `${p.rackSize} tile(s)` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         )}
 
         <TurnLog game={game} />

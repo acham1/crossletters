@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/alan/not-scrabble/internal/game"
+	"github.com/alan/not-scrabble/internal/push"
 	"github.com/alan/not-scrabble/internal/store"
 )
 
@@ -21,6 +23,9 @@ type Deps struct {
 	Store         store.Store
 	Dict          game.WordSet
 	Auth          Authenticator
+	GoogleAuth    *GoogleAuth  // optional; if set, mounts Google callback routes
+	Allowlist     *Allowlist   // optional; if set, checks email against the list
+	Push          *push.Notifier // optional; if set, enables Web Push
 	Now           func() time.Time
 	RandSeed      func() int64
 	StaticFS      fs.FS // optional; if set, served at "/"
@@ -58,6 +63,12 @@ func (s *Server) routes() {
 		s.mux.HandleFunc("POST /api/auth/dev/login", s.handleDevLogin)
 		s.mux.HandleFunc("POST /api/auth/dev/logout", s.handleDevLogout)
 	}
+	if s.deps.GoogleAuth != nil {
+		s.mux.HandleFunc("POST /api/auth/google/callback", s.deps.GoogleAuth.HandleCallback)
+		s.mux.HandleFunc("POST /api/auth/google/logout", s.deps.GoogleAuth.HandleLogout)
+		s.mux.HandleFunc("GET /api/auth/config", s.handleAuthConfig)
+	}
+
 	api("GET /api/users/me", s.handleUserMe)
 	api("GET /api/users/me/games", s.handleUserGames)
 
@@ -67,6 +78,20 @@ func (s *Server) routes() {
 	api("GET /api/games/{id}", s.handleGetGame)
 	api("POST /api/games/{id}/start", s.handleStartGame)
 	api("POST /api/games/{id}/plays", s.handlePlay)
+
+	// Push
+	if s.deps.Push != nil {
+		api("POST /api/push/subscribe", s.handlePushSubscribe)
+		s.mux.HandleFunc("GET /api/push/vapid-key", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]string{"key": s.deps.Push.VAPIDPublicKey()})
+		})
+	}
+
+	// Health
+	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
 
 	// Static frontend
 	if s.deps.StaticFS != nil {
@@ -81,6 +106,11 @@ func (s *Server) withAuth(h http.HandlerFunc) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, err.Error())
 			return
 		}
+		// Allowlist check: reject before creating user record.
+		if s.deps.Allowlist != nil && !s.deps.Allowlist.Contains(id.Email) {
+			writeErr(w, http.StatusForbidden, "your account is not on the invite list")
+			return
+		}
 		// Ensure a user record exists for the identity.
 		if _, err := s.deps.Store.GetOrCreateUser(r.Context(), id.UserID, id.Name, id.Email); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
@@ -88,6 +118,16 @@ func (s *Server) withAuth(h http.HandlerFunc) http.HandlerFunc {
 		}
 		h.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), id)))
 	}
+}
+
+func (s *Server) handleAuthConfig(w http.ResponseWriter, _ *http.Request) {
+	resp := map[string]any{
+		"devLogin": s.deps.AllowDevLogin,
+	}
+	if s.deps.GoogleAuth != nil {
+		resp["googleClientId"] = s.deps.GoogleAuth.ClientID()
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // --- handlers ---
@@ -292,6 +332,28 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, PlayResponse{Result: result, Game: viewFor(updated, id.UserID)})
+
+	// Fire push notification to the next player (best-effort, non-blocking).
+	if s.deps.Push != nil && updated.Status == game.StatusActive && len(updated.Players) > 0 {
+		nextIdx := updated.Turn % len(updated.Players)
+		nextPlayer := updated.Players[nextIdx]
+		go s.deps.Push.Notify(context.Background(), nextPlayer.UserID, push.Notification{
+			Title: "not-scrabble",
+			Body:  id.Name + " played — it's your turn!",
+			URL:   "/?game=" + gameID,
+		})
+	}
+}
+
+func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
+	id, _ := identityFrom(r.Context())
+	var sub push.Subscription
+	if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid subscription")
+		return
+	}
+	s.deps.Push.Subscribe(id.UserID, sub)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- helpers ---

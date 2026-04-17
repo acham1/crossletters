@@ -36,10 +36,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+export interface AuthConfig {
+  devLogin: boolean;
+  googleClientId?: string;
+}
+
 export const api = {
+  authConfig: () => request<AuthConfig>("GET", "/api/auth/config"),
   devLogin: (userId: string, name: string) =>
     request<UserSummary>("POST", "/api/auth/dev/login", { userId, name }),
   devLogout: () => request<void>("POST", "/api/auth/dev/logout"),
+  googleCallback: (credential: string) =>
+    request<UserSummary>("POST", "/api/auth/google/callback", { credential }),
+  googleLogout: () => request<void>("POST", "/api/auth/google/logout"),
   me: () => request<UserSummary>("GET", "/api/users/me"),
   myGames: () => request<GameSummary[]>("GET", "/api/users/me/games"),
   createGame: () => request<CreateGameResponse>("POST", "/api/games"),
@@ -48,4 +57,41 @@ export const api = {
   startGame: (id: string) => request<GameView>("POST", `/api/games/${id}/start`),
   play: (id: string, req: PlayRequest) =>
     request<PlayResponse>("POST", `/api/games/${id}/plays`, req),
+  pushVapidKey: () => request<{ key: string }>("GET", "/api/push/vapid-key"),
+  pushSubscribe: (sub: PushSubscriptionJSON) =>
+    request<void>("POST", "/api/push/subscribe", sub),
 };
+
+/** Register service worker and subscribe to Web Push if VAPID key is available. */
+export async function setupPushSubscription(): Promise<void> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  try {
+    const { key } = await api.pushVapidKey();
+    if (!key) return;
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      await api.pushSubscribe(existing.toJSON());
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key),
+    });
+    await api.pushSubscribe(sub.toJSON());
+  } catch (err) {
+    console.warn("Push subscription failed:", err);
+  }
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}

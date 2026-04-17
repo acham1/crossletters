@@ -281,6 +281,10 @@ code {
 .rack-slot.empty { background: transparent; border: 1px dashed var(--muted); }
 .rack-slot.exchange { cursor: pointer; }
 .rack-slot.exchange.selected { outline: 2px solid var(--accent-2); }
+.rack-slot.selected { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+
+.cell.cell-tappable { cursor: pointer; }
+.cell.cell-tappable:hover { outline: 2px solid var(--accent-2); outline-offset: -2px; }
 
 .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
 
@@ -312,6 +316,12 @@ code {
 .score-preview-bingo { background: var(--accent-2); color: #2d220b; }
 .score-preview-bingo .score-preview-points { color: inherit; }
 .score-preview-total { font-weight: 700; margin-left: 0.25rem; }
+
+.end-game-summary h3 { margin-bottom: 0.5rem; }
+.end-game-table { width: 100%; border-collapse: collapse; }
+.end-game-table th { text-align: left; font-size: 0.85rem; color: var(--muted); padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--panel-2); }
+.end-game-table td { padding: 0.35rem 0.5rem; }
+.end-game-table .score-value { font-weight: 700; }
 
 .turn-log {
   background: var(--panel);

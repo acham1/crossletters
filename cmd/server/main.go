@@ -16,8 +16,10 @@ import (
 	"syscall"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/alan/not-scrabble/internal/dict"
 	"github.com/alan/not-scrabble/internal/httpapi"
+	"github.com/alan/not-scrabble/internal/push"
 	"github.com/alan/not-scrabble/internal/store"
 	"github.com/alan/not-scrabble/webdist"
 )
@@ -38,12 +40,19 @@ var fallbackWords = []string{
 
 func main() {
 	var (
-		addr    = flag.String("addr", "127.0.0.1:8080", "listen address")
+		addr     = flag.String("addr", "127.0.0.1:8080", "listen address")
 		dictPath = flag.String("dict", "data/enable.txt", "path to dictionary file (.txt or .txt.gz). Falls back to a small built-in list if missing.")
 		allowDev = flag.Bool("dev-login", true, "enable POST /api/auth/dev/login for local development")
 		noStatic = flag.Bool("no-static", false, "disable serving the embedded frontend")
 	)
 	flag.Parse()
+
+	// Env-based config (production knobs).
+	bucketName := os.Getenv("BUCKET_NAME")
+	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	allowlistEmails := os.Getenv("ALLOWLIST_EMAILS")
+	allowlistGCS := os.Getenv("ALLOWLIST_GCS")
 
 	d, err := loadDict(*dictPath)
 	if err != nil {
@@ -51,6 +60,77 @@ func main() {
 	}
 	log.Printf("dictionary loaded: %d words (from %s)", d.Size(), dictSource(*dictPath))
 
+	// --- Store ---
+	var st store.Store
+	if bucketName != "" {
+		client, err := storage.NewClient(context.Background())
+		if err != nil {
+			log.Fatalf("create GCS client: %v", err)
+		}
+		st = store.NewGCS(client, bucketName)
+		log.Printf("store: GCS bucket %q", bucketName)
+
+		// --- Allowlist (needs GCS client) ---
+		if allowlistGCS != "" {
+			al, err := httpapi.NewAllowlistGCS(client, allowlistGCS, 5*time.Minute)
+			if err != nil {
+				log.Fatalf("load GCS allowlist: %v", err)
+			}
+			_ = al // passed to deps below via env check
+		}
+	} else {
+		st = store.NewMemory()
+		log.Printf("store: in-memory (set BUCKET_NAME for GCS)")
+	}
+
+	// --- Auth ---
+	var auth httpapi.Authenticator
+	var googleAuth *httpapi.GoogleAuth
+	secureCookie := !*allowDev // Secure cookies in prod
+
+	if googleClientID != "" {
+		googleAuth = httpapi.NewGoogleAuth(googleClientID, sessionSecret, secureCookie)
+		if *allowDev {
+			auth = httpapi.ChainAuth{googleAuth, httpapi.DevAuth{}}
+		} else {
+			auth = googleAuth
+		}
+		log.Printf("auth: Google Sign-In (client ID %s…)", googleClientID[:min(len(googleClientID), 16)])
+	} else {
+		auth = httpapi.DevAuth{}
+		log.Printf("auth: dev cookies only (set GOOGLE_CLIENT_ID for Google Sign-In)")
+	}
+
+	// --- Push ---
+	var notifier *push.Notifier
+	vapidPublic := os.Getenv("VAPID_PUBLIC_KEY")
+	vapidPrivate := os.Getenv("VAPID_PRIVATE_KEY")
+	vapidContact := os.Getenv("VAPID_CONTACT")
+	if vapidPublic != "" && vapidPrivate != "" {
+		if vapidContact == "" {
+			vapidContact = "mailto:admin@example.com"
+		}
+		notifier = push.NewNotifier(vapidPublic, vapidPrivate, vapidContact)
+		log.Printf("push: Web Push enabled")
+	} else {
+		log.Printf("push: disabled (set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY to enable)")
+	}
+
+	// --- Allowlist ---
+	var allowlist *httpapi.Allowlist
+	if allowlistEmails != "" {
+		allowlist = httpapi.NewAllowlistInline(allowlistEmails)
+		log.Printf("allowlist: %d emails from ALLOWLIST_EMAILS", len(strings.Split(allowlistEmails, ",")))
+	} else if allowlistGCS != "" && bucketName != "" {
+		client, _ := storage.NewClient(context.Background())
+		al, err := httpapi.NewAllowlistGCS(client, allowlistGCS, 5*time.Minute)
+		if err != nil {
+			log.Fatalf("load GCS allowlist: %v", err)
+		}
+		allowlist = al
+	}
+
+	// --- Static frontend ---
 	var staticFS fs.FS
 	if !*noStatic {
 		staticFS = webdist.FS()
@@ -62,9 +142,12 @@ func main() {
 	}
 
 	srv := httpapi.New(httpapi.Deps{
-		Store:         store.NewMemory(),
+		Store:         st,
 		Dict:          d,
-		Auth:          httpapi.DevAuth{},
+		Auth:          auth,
+		GoogleAuth:    googleAuth,
+		Allowlist:     allowlist,
+		Push:          notifier,
 		Now:           time.Now,
 		StaticFS:      staticFS,
 		AllowDevLogin: *allowDev,

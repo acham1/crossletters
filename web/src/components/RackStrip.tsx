@@ -7,12 +7,16 @@ export function RackStrip({
   exchangeMode,
   exchangeSelection,
   onToggleExchange,
+  selectedIdx,
+  onTileTap,
 }: {
   rack: string[];
   rackUsed: Set<number>;
   exchangeMode: boolean;
   exchangeSelection: Set<number>;
   onToggleExchange: (idx: number) => void;
+  selectedIdx?: number | null;
+  onTileTap?: (idx: number) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: "rack-zone" });
   return (
@@ -39,13 +43,31 @@ export function RackStrip({
             </button>
           );
         }
-        return <DraggableRackTile key={idx} idx={idx} letter={letter} />;
+        return (
+          <DraggableRackTile
+            key={idx}
+            idx={idx}
+            letter={letter}
+            selected={selectedIdx === idx}
+            onTap={onTileTap}
+          />
+        );
       })}
     </div>
   );
 }
 
-function DraggableRackTile({ idx, letter }: { idx: number; letter: string }) {
+function DraggableRackTile({
+  idx,
+  letter,
+  selected,
+  onTap,
+}: {
+  idx: number;
+  letter: string;
+  selected?: boolean;
+  onTap?: (idx: number) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `rack-${idx}`,
   });
@@ -59,7 +81,8 @@ function DraggableRackTile({ idx, letter }: { idx: number; letter: string }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`rack-slot tile-drag${isDragging ? " dragging" : ""}`}
+      onClick={() => onTap?.(idx)}
+      className={`rack-slot tile-drag${isDragging ? " dragging" : ""}${selected ? " selected" : ""}`}
     >
       <Tile letter={displayLetter} blank={letter === "?"} />
     </div>
