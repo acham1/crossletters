@@ -44,6 +44,33 @@ go test ./...                # engine + store + http integration tests
 (cd web && npm run typecheck)   # frontend typechecks
 ```
 
+## Production (Cloud Run)
+
+Infrastructure is managed by Terraform in `infra/`. One-time setup:
+
+```sh
+cd infra
+terraform init
+terraform apply
+```
+
+This provisions the GCS bucket, Artifact Registry, service account, IAM
+bindings, and Cloud Run service. To deploy (or redeploy after code changes):
+
+```sh
+# build and push the container image
+docker build --platform linux/amd64 \
+  -t us-central1-docker.pkg.dev/not-scrabble/not-scrabble/not-scrabble:latest .
+docker push us-central1-docker.pkg.dev/not-scrabble/not-scrabble/not-scrabble:latest
+
+# update Cloud Run to the new image
+gcloud run services update not-scrabble \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/not-scrabble/not-scrabble/not-scrabble:latest
+```
+
+The service scales to zero (`min-instances=0`) so idle cost is $0.
+
 ## Dictionary
 
 On startup the server tries to load `data/enable.txt` and falls back to a
