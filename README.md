@@ -51,48 +51,55 @@ Infrastructure is managed by Terraform in `infra/`. One-time setup:
 ```sh
 cd infra
 terraform init
-terraform apply
+terraform apply   # requires terraform.tfvars — see below
 ```
 
 This provisions the GCS bucket, Artifact Registry, service account, IAM
-bindings, and Cloud Run service. To deploy (or redeploy after code changes):
+bindings, Secret Manager secrets, and Cloud Run service. Secrets
+(`SESSION_SECRET`, `VAPID_PRIVATE_KEY`) are stored in Google Secret Manager
+and injected into Cloud Run via secret references — they never appear as
+plain-text env vars.
+
+Create `infra/terraform.tfvars` (gitignored) with your values:
+
+```hcl
+google_client_id  = "YOUR_OAUTH_CLIENT_ID"
+vapid_public_key  = "YOUR_VAPID_PUBLIC_KEY"
+vapid_private_key = "YOUR_VAPID_PRIVATE_KEY"
+vapid_contact     = "mailto:you@example.com"
+```
+
+To deploy (or redeploy after code changes):
 
 ```sh
-# build and push the container image
-docker build --platform linux/amd64 \
-  -t us-central1-docker.pkg.dev/not-scrabble/not-scrabble/not-scrabble:latest .
-docker push us-central1-docker.pkg.dev/not-scrabble/not-scrabble/not-scrabble:latest
-
-# update Cloud Run to the new image
-gcloud run services update not-scrabble \
-  --region us-central1 \
-  --image us-central1-docker.pkg.dev/not-scrabble/not-scrabble/not-scrabble:latest
+gcloud run deploy not-scrabble --source=. --region=us-central1 --project=not-scrabble
 ```
 
 The service scales to zero (`min-instances=0`) so idle cost is $0.
 
 ## Dictionary
 
-On startup the server tries to load `data/enable.txt` and falls back to a
-tiny built-in list (~78 common words) if that's missing. The fallback is
-enough to sanity-check a play flow but too small for real games.
+Production uses **NWL2023** (NASPA Word List 2023), the official North American
+tournament Scrabble dictionary. NWL2023 is copyrighted and not included in the
+repo — keep your copy under `data/` (already `.gitignore`'d).
 
-Fetch ENABLE (public domain, 172,819 words) from Norvig's mirror:
+For local development, the server falls back to a tiny built-in list (~78
+common words) if no dictionary file is found. The fallback is enough to
+sanity-check a play flow but too small for real games.
+
+Fetch ENABLE (public domain, 172,819 words) as a free alternative:
 
 ```sh
 curl -o data/enable.txt https://norvig.com/ngrams/enable1.txt
 ```
 
-Point `-dict` at any other newline-separated word file if you prefer:
+Point `-dict` at any newline-separated word file:
 
 ```sh
-go run ./cmd/server -dict /path/to/your/wordlist.txt
+go run ./cmd/server -dict data/nwl2023.txt
 # or the gzipped form
-go run ./cmd/server -dict /path/to/your/wordlist.txt.gz
+go run ./cmd/server -dict data/nwl2023.txt.gz
 ```
-
-Copyrighted tournament lists (TWL, SOWPODS/Collins, NWL) are not included;
-keep any local copy under `data/` (already `.gitignore`'d) and do not commit.
 
 ## Project layout
 
@@ -177,22 +184,27 @@ All major planned features are implemented:
 
 ### Environment variables (production)
 
-| Variable | Required | Purpose |
-|:---------|:---------|:--------|
-| `BUCKET_NAME` | yes | GCS bucket for game/user state |
-| `GOOGLE_CLIENT_ID` | yes | Google OAuth client ID |
-| `SESSION_SECRET` | yes | HMAC key for session cookies (hex) |
-| `ALLOWLIST_EMAILS` | no | Comma-separated allowed emails |
-| `ALLOWLIST_GCS` | no | `gs://bucket/object` path to allowlist file |
-| `VAPID_PUBLIC_KEY` | no | VAPID public key for Web Push |
-| `VAPID_PRIVATE_KEY` | no | VAPID private key for Web Push |
-| `VAPID_CONTACT` | no | Contact email for VAPID (e.g. `mailto:you@example.com`) |
+| Variable | Required | Source | Purpose |
+|:---------|:---------|:-------|:--------|
+| `BUCKET_NAME` | yes | env var | GCS bucket for game/user state |
+| `GOOGLE_CLIENT_ID` | yes | env var | Google OAuth client ID |
+| `SESSION_SECRET` | yes | Secret Manager | HMAC key for session cookies (hex) |
+| `ALLOWLIST_EMAILS` | no | env var | Comma-separated allowed emails |
+| `ALLOWLIST_GCS` | no | env var | `gs://bucket/object` path to allowlist file |
+| `VAPID_PUBLIC_KEY` | no | env var | VAPID public key for Web Push |
+| `VAPID_PRIVATE_KEY` | no | Secret Manager | VAPID private key for Web Push |
+| `VAPID_CONTACT` | no | env var | Contact email for VAPID (e.g. `mailto:you@example.com`) |
+
+## Known issues
+
+- **Invite links don't work** — opening a `?invite=CODE` URL doesn't trigger the join flow
+- **No visual indicator for tile exchange** — selected tiles have no highlight/feedback
+- **Push notifications unverified** — subscriptions are now persisted to GCS but
+  end-to-end delivery hasn't been confirmed yet
 
 ## Possible future work
 
 - Game history/replay view
-- Exchange confirmation modal
 - Structured request logging
 - Invite code garbage collection cron
 - Daily billing-alert budget
-- Per-device push subscription persistence (currently in-memory)

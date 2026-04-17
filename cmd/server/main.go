@@ -110,7 +110,7 @@ func main() {
 		if vapidContact == "" {
 			vapidContact = "mailto:admin@example.com"
 		}
-		notifier = push.NewNotifier(vapidPublic, vapidPrivate, vapidContact)
+		notifier = push.NewNotifier(vapidPublic, vapidPrivate, vapidContact, st)
 		log.Printf("push: Web Push enabled")
 	} else {
 		log.Printf("push: disabled (set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY to enable)")

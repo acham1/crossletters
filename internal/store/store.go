@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/alan/not-scrabble/internal/game"
+	"github.com/alan/not-scrabble/internal/push"
 )
 
 // ErrNotFound is returned when a lookup misses.
@@ -18,10 +19,11 @@ var ErrConflict = errors.New("concurrent modification")
 
 // User is the app-level user record.
 type User struct {
-	ID      string   `json:"id"`    // stable identifier (e.g. Google sub, or dev username)
-	Name    string   `json:"name"`
-	Email   string   `json:"email,omitempty"`
-	GameIDs []string `json:"gameIds"`
+	ID                string              `json:"id"`    // stable identifier (e.g. Google sub, or dev username)
+	Name              string              `json:"name"`
+	Email             string              `json:"email,omitempty"`
+	GameIDs           []string            `json:"gameIds"`
+	PushSubscriptions []push.Subscription `json:"pushSubscriptions,omitempty"`
 }
 
 // Store is the persistence contract.
@@ -36,4 +38,9 @@ type Store interface {
 	GetOrCreateUser(ctx context.Context, id, name, email string) (*User, error)
 	AddGameToUser(ctx context.Context, userID, gameID string) error
 	GetUser(ctx context.Context, id string) (*User, error)
+
+	// Push subscriptions
+	SavePushSubscription(ctx context.Context, userID string, sub push.Subscription) error
+	GetPushSubscriptions(ctx context.Context, userID string) ([]push.Subscription, error)
+	RemovePushSubscription(ctx context.Context, userID string, endpoint string) error
 }

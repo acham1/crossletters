@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/alan/not-scrabble/internal/game"
+	"github.com/alan/not-scrabble/internal/push"
 )
 
 // Memory is an in-process Store for local dev and tests. Safe for concurrent
@@ -142,8 +143,52 @@ func (m *Memory) GetUser(_ context.Context, id string) (*User, error) {
 	return cloneUser(u), nil
 }
 
+func (m *Memory) SavePushSubscription(_ context.Context, userID string, sub push.Subscription) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	for _, existing := range u.PushSubscriptions {
+		if existing.Endpoint == sub.Endpoint {
+			return nil
+		}
+	}
+	u.PushSubscriptions = append(u.PushSubscriptions, sub)
+	return nil
+}
+
+func (m *Memory) GetPushSubscriptions(_ context.Context, userID string) ([]push.Subscription, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[userID]
+	if !ok {
+		return nil, nil
+	}
+	return append([]push.Subscription(nil), u.PushSubscriptions...), nil
+}
+
+func (m *Memory) RemovePushSubscription(_ context.Context, userID string, endpoint string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	filtered := make([]push.Subscription, 0, len(u.PushSubscriptions))
+	for _, s := range u.PushSubscriptions {
+		if s.Endpoint != endpoint {
+			filtered = append(filtered, s)
+		}
+	}
+	u.PushSubscriptions = filtered
+	return nil
+}
+
 func cloneUser(u *User) *User {
 	cp := *u
 	cp.GameIDs = append([]string(nil), u.GameIDs...)
+	cp.PushSubscriptions = append([]push.Subscription(nil), u.PushSubscriptions...)
 	return &cp
 }

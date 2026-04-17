@@ -12,3 +12,4 @@ data/nwl2023.txt.gz
 infra/.terraform/
 infra/terraform.tfstate
 infra/terraform.tfstate.backup
+infra/terraform.tfvars

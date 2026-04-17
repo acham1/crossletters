@@ -26,6 +26,7 @@ locals {
     "storage.googleapis.com",
     "artifactregistry.googleapis.com",
     "iam.googleapis.com",
+    "secretmanager.googleapis.com",
   ]
 }
 
@@ -91,10 +92,51 @@ resource "google_storage_bucket_iam_member" "app_state" {
 }
 
 # ---------------------------------------------------------------------------
-# Session secret — generated once, stored in Terraform state
+# Secrets — stored in Google Secret Manager
 # ---------------------------------------------------------------------------
 resource "random_id" "session_secret" {
   byte_length = 32
+}
+
+resource "google_secret_manager_secret" "session_secret" {
+  secret_id = "session-secret"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "session_secret" {
+  secret      = google_secret_manager_secret.session_secret.id
+  secret_data = random_id.session_secret.hex
+}
+
+resource "google_secret_manager_secret" "vapid_private_key" {
+  count     = var.vapid_private_key != "" ? 1 : 0
+  secret_id = "vapid-private-key"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "vapid_private_key" {
+  count       = var.vapid_private_key != "" ? 1 : 0
+  secret      = google_secret_manager_secret.vapid_private_key[0].id
+  secret_data = var.vapid_private_key
+}
+
+resource "google_secret_manager_secret_iam_member" "session_secret_accessor" {
+  secret_id = google_secret_manager_secret.session_secret.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.app.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "vapid_private_key_accessor" {
+  count     = var.vapid_private_key != "" ? 1 : 0
+  secret_id = google_secret_manager_secret.vapid_private_key[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.app.email}"
 }
 
 # ---------------------------------------------------------------------------
@@ -141,8 +183,13 @@ resource "google_cloud_run_v2_service" "app" {
       }
 
       env {
-        name  = "SESSION_SECRET"
-        value = random_id.session_secret.hex
+        name = "SESSION_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.session_secret.secret_id
+            version = "latest"
+          }
+        }
       }
 
       dynamic "env" {
@@ -164,8 +211,13 @@ resource "google_cloud_run_v2_service" "app" {
       dynamic "env" {
         for_each = var.vapid_private_key != "" ? [1] : []
         content {
-          name  = "VAPID_PRIVATE_KEY"
-          value = var.vapid_private_key
+          name = "VAPID_PRIVATE_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.vapid_private_key[0].secret_id
+              version = "latest"
+            }
+          }
         }
       }
 

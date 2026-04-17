@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"sync"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -20,20 +19,25 @@ type Subscription struct {
 	} `json:"keys"`
 }
 
-// Notifier sends Web Push notifications. It stores subscriptions in memory
-// (keyed by user ID). A nil Notifier is safe to call — all methods no-op.
+// SubscriptionStore is the subset of store.Store that the Notifier needs.
+type SubscriptionStore interface {
+	GetPushSubscriptions(ctx context.Context, userID string) ([]Subscription, error)
+	RemovePushSubscription(ctx context.Context, userID string, endpoint string) error
+}
+
+// Notifier sends Web Push notifications. A nil Notifier is safe to call —
+// all methods no-op.
 type Notifier struct {
-	mu           sync.RWMutex
-	subs         map[string][]Subscription // userId -> subscriptions
+	store        SubscriptionStore
 	vapidPublic  string
 	vapidPrivate string
 	vapidContact string // mailto: URI
 }
 
-// NewNotifier creates a Notifier with the given VAPID keys.
-func NewNotifier(vapidPublic, vapidPrivate, vapidContact string) *Notifier {
+// NewNotifier creates a Notifier with the given VAPID keys and subscription store.
+func NewNotifier(vapidPublic, vapidPrivate, vapidContact string, store SubscriptionStore) *Notifier {
 	return &Notifier{
-		subs:         map[string][]Subscription{},
+		store:        store,
 		vapidPublic:  vapidPublic,
 		vapidPrivate: vapidPrivate,
 		vapidContact: vapidContact,
@@ -46,22 +50,6 @@ func (n *Notifier) VAPIDPublicKey() string {
 		return ""
 	}
 	return n.vapidPublic
-}
-
-// Subscribe adds a push subscription for a user.
-func (n *Notifier) Subscribe(userID string, sub Subscription) {
-	if n == nil {
-		return
-	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	// Deduplicate by endpoint.
-	for _, s := range n.subs[userID] {
-		if s.Endpoint == sub.Endpoint {
-			return
-		}
-	}
-	n.subs[userID] = append(n.subs[userID], sub)
 }
 
 // Notification payload sent to the browser.
@@ -77,18 +65,19 @@ func (n *Notifier) Notify(ctx context.Context, userID string, notif Notification
 	if n == nil {
 		return
 	}
-	n.mu.RLock()
-	subs := append([]Subscription(nil), n.subs[userID]...)
-	n.mu.RUnlock()
 
+	subs, err := n.store.GetPushSubscriptions(ctx, userID)
+	if err != nil {
+		log.Printf("push: failed to load subscriptions for %s: %v", userID, err)
+		return
+	}
 	if len(subs) == 0 {
 		return
 	}
 
 	payload, _ := json.Marshal(notif)
 
-	var stale []int
-	for i, sub := range subs {
+	for _, sub := range subs {
 		resp, err := webpush.SendNotificationWithContext(ctx, payload, &webpush.Subscription{
 			Endpoint: sub.Endpoint,
 			Keys: webpush.Keys{
@@ -102,30 +91,12 @@ func (n *Notifier) Notify(ctx context.Context, userID string, notif Notification
 		})
 		if err != nil {
 			log.Printf("push to %s failed: %v", userID, err)
-			stale = append(stale, i)
+			go n.store.RemovePushSubscription(context.Background(), userID, sub.Endpoint)
 			continue
 		}
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusGone {
-			stale = append(stale, i)
+			go n.store.RemovePushSubscription(context.Background(), userID, sub.Endpoint)
 		}
-	}
-
-	// Remove stale subscriptions.
-	if len(stale) > 0 {
-		n.mu.Lock()
-		current := n.subs[userID]
-		filtered := make([]Subscription, 0, len(current))
-		staleSet := map[int]bool{}
-		for _, i := range stale {
-			staleSet[i] = true
-		}
-		for i, s := range current {
-			if !staleSet[i] {
-				filtered = append(filtered, s)
-			}
-		}
-		n.subs[userID] = filtered
-		n.mu.Unlock()
 	}
 }

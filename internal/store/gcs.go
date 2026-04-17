@@ -10,6 +10,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/alan/not-scrabble/internal/game"
+	"github.com/alan/not-scrabble/internal/push"
 )
 
 // GCS is a Store backed by Google Cloud Storage. Games, users, and invite
@@ -232,6 +233,69 @@ func (s *GCS) putUser(ctx context.Context, u *User, gen int64) error {
 		return gcsErr(err)
 	}
 	return nil
+}
+
+// --- push subscriptions ---
+
+func (s *GCS) SavePushSubscription(ctx context.Context, userID string, sub push.Subscription) error {
+	const maxRetries = 3
+	for attempt := range maxRetries {
+		u, gen, err := s.getUserWithGen(ctx, userID)
+		if err != nil {
+			return err
+		}
+		// Deduplicate by endpoint.
+		for _, existing := range u.PushSubscriptions {
+			if existing.Endpoint == sub.Endpoint {
+				return nil
+			}
+		}
+		u.PushSubscriptions = append(u.PushSubscriptions, sub)
+		if err := s.putUser(ctx, u, gen); err != nil {
+			if errors.Is(err, ErrConflict) && attempt < maxRetries-1 {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return ErrConflict
+}
+
+func (s *GCS) GetPushSubscriptions(ctx context.Context, userID string) ([]push.Subscription, error) {
+	u, _, err := s.getUserWithGen(ctx, userID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return u.PushSubscriptions, nil
+}
+
+func (s *GCS) RemovePushSubscription(ctx context.Context, userID string, endpoint string) error {
+	const maxRetries = 3
+	for attempt := range maxRetries {
+		u, gen, err := s.getUserWithGen(ctx, userID)
+		if err != nil {
+			return err
+		}
+		filtered := make([]push.Subscription, 0, len(u.PushSubscriptions))
+		for _, s := range u.PushSubscriptions {
+			if s.Endpoint != endpoint {
+				filtered = append(filtered, s)
+			}
+		}
+		u.PushSubscriptions = filtered
+		if err := s.putUser(ctx, u, gen); err != nil {
+			if errors.Is(err, ErrConflict) && attempt < maxRetries-1 {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return ErrConflict
 }
 
 // --- helpers ---

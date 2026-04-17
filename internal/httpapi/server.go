@@ -352,7 +352,10 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid subscription")
 		return
 	}
-	s.deps.Push.Subscribe(id.UserID, sub)
+	if err := s.deps.Store.SavePushSubscription(r.Context(), id.UserID, sub); err != nil {
+		writeErr(w, http.StatusInternalServerError, "failed to save subscription")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
