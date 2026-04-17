@@ -108,7 +108,7 @@ func (s *Server) withAuth(h http.HandlerFunc) http.HandlerFunc {
 		}
 		// Allowlist check: reject before creating user record.
 		if s.deps.Allowlist != nil && !s.deps.Allowlist.Contains(id.Email) {
-			writeErr(w, http.StatusForbidden, "your account is not on the invite list")
+			writeErr(w, http.StatusForbidden, "your account is not on the invite list — please talk to the person who invited you to learn about getting access or self-hosting")
 			return
 		}
 		// Ensure a user record exists for the identity.
