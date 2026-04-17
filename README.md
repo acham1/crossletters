@@ -195,8 +195,6 @@ All major planned features are implemented:
 
 ## Known issues
 
-- **Invite links don't work** — opening a `?invite=CODE` URL doesn't trigger the join flow
-- **No visual indicator for tile exchange** — selected tiles have no highlight/feedback
 - **Push notifications unverified** — subscriptions are now persisted to GCS but
   end-to-end delivery hasn't been confirmed yet
 

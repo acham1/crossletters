@@ -6,13 +6,15 @@ import { LobbyView } from "./views/LobbyView";
 import { GameBoardView } from "./views/GameBoardView";
 
 type Route =
-  | { kind: "lobby" }
+  | { kind: "lobby"; invite?: string }
   | { kind: "game"; id: string };
 
 function parseRoute(): Route {
   const params = new URLSearchParams(window.location.search);
   const id = params.get("game");
   if (id) return { kind: "game", id };
+  const invite = params.get("invite");
+  if (invite) return { kind: "lobby", invite };
   return { kind: "lobby" };
 }
 
@@ -71,7 +73,10 @@ export function App() {
         </div>
       </header>
       {route.kind === "lobby" && (
-        <LobbyView onOpenGame={(id) => navigate({ kind: "game", id })} />
+        <LobbyView
+          inviteCode={route.invite}
+          onOpenGame={(id) => navigate({ kind: "game", id })}
+        />
       )}
       {route.kind === "game" && (
         <GameBoardView

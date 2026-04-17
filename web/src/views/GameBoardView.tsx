@@ -258,6 +258,17 @@ export function GameBoardView({
   };
 
   const inviteUrl = `${window.location.origin}/?invite=${encodeURIComponent(game.inviteCode)}`;
+  const [copied, setCopied] = useState(false);
+
+  const copyInviteLink = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: select the text
+    }
+  };
 
   return (
     <div className="game">
@@ -301,9 +312,12 @@ export function GameBoardView({
             <p>
               Share this code: <code className="invite-code">{game.inviteCode}</code>
             </p>
-            <p className="muted">
-              Or link: <code>{inviteUrl}</code>
-            </p>
+            <div className="invite-link-row">
+              <code className="invite-url">{inviteUrl}</code>
+              <button className="btn-copy" onClick={copyInviteLink}>
+                {copied ? "Copied!" : "Copy link"}
+              </button>
+            </div>
             {game.creatorId === me.userId && (
               <button disabled={game.players.length < 2 || busy} onClick={startGame}>
                 Start game ({game.players.length}/4 joined)
@@ -325,6 +339,10 @@ export function GameBoardView({
               selectedIdx={selectedRackIdx}
               onTileTap={handleRackTap}
             />
+
+            {exchangeMode && (
+              <div className="exchange-hint muted">Tap tiles to select them for exchange</div>
+            )}
 
             {!exchangeMode && pending.length > 0 && scorePreview && (
               <div className={`score-preview${scorePreview.valid ? "" : " invalid"}`}>

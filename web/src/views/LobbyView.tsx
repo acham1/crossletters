@@ -2,17 +2,40 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { GameSummary } from "../api/types";
 
-export function LobbyView({ onOpenGame }: { onOpenGame: (id: string) => void }) {
+export function LobbyView({
+  inviteCode,
+  onOpenGame,
+}: {
+  inviteCode?: string;
+  onOpenGame: (id: string) => void;
+}) {
   const [games, setGames] = useState<GameSummary[] | null>(null);
-  const [invite, setInvite] = useState("");
+  const [invite, setInvite] = useState(inviteCode ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [autoJoinAttempted, setAutoJoinAttempted] = useState(false);
 
   const refresh = () => api.myGames().then(setGames).catch((e) => setError(String(e)));
 
   useEffect(() => {
     refresh();
   }, []);
+
+  // Auto-join when opened via an invite link
+  useEffect(() => {
+    if (!inviteCode || autoJoinAttempted) return;
+    setAutoJoinAttempted(true);
+    setBusy(true);
+    setError(null);
+    api
+      .joinGame({ inviteCode: inviteCode.trim().toUpperCase() })
+      .then((game) => onOpenGame(game.id))
+      .catch((e) => {
+        if (e instanceof ApiError) setError(e.message);
+        else setError(String(e));
+      })
+      .finally(() => setBusy(false));
+  }, [inviteCode, autoJoinAttempted, onOpenGame]);
 
   const create = async () => {
     setBusy(true);
