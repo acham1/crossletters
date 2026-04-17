@@ -1,0 +1,12 @@
+.git
+node_modules
+web/node_modules
+webdist/dist/index.html
+webdist/dist/assets
+server
+scrabble-server
+data/nwl2023.txt
+data/nwl2023.txt.gz
+infra/.terraform
+infra/terraform.tfstate*
+*.md

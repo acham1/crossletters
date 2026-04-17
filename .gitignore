@@ -8,3 +8,7 @@ data/nwl2023.txt
 data/nwl2023.txt.gz
 /scrabble-server
 /server
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
