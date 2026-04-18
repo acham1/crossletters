@@ -253,6 +253,18 @@ func (s *Server) handleJoinGame(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "invite not found")
 		return
 	}
+	// If the player is already in the game, just return the game view.
+	alreadyIn := false
+	for _, p := range g.Players {
+		if p.UserID == id.UserID {
+			alreadyIn = true
+			break
+		}
+	}
+	if alreadyIn {
+		writeJSON(w, http.StatusOK, viewFor(g, id.UserID))
+		return
+	}
 	updated, err := s.deps.Store.UpdateGame(r.Context(), g, func(g *game.Game) error {
 		return g.AddPlayer(id.UserID, id.Name)
 	})
