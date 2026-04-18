@@ -20,8 +20,8 @@ go run ./cmd/server
 Open http://127.0.0.1:8080 in one browser, then open a second browser (or a
 private window) for the other player. The dev-login form on the landing page
 takes any `userId` + display name and sets a cookie. Create a game in one
-window, copy the invite code into the other, join, then have the creator
-click **Start game**.
+window, copy the invite code into the other, and join — the game is active
+immediately and players can start placing tiles as soon as they join.
 
 ### Dev loop with hot reload
 
@@ -150,10 +150,9 @@ replayable from the turn history for debugging.
 | POST   | `/api/auth/google/logout`      | clears session cookie                      |
 | GET    | `/api/users/me`                | current user                               |
 | GET    | `/api/users/me/games`          | list my games                              |
-| POST   | `/api/games`                   | create a new game (creator is player 1)    |
+| POST   | `/api/games`                   | `{numPlayers}` — create game (2–4 players) |
 | POST   | `/api/games/join`              | `{inviteCode}` — join by code              |
 | GET    | `/api/games/{id}`              | redacted game state for the caller         |
-| POST   | `/api/games/{id}/start`        | creator starts when 2–4 players have joined |
 | POST   | `/api/games/{id}/plays`        | `{type: "play"\|"exchange"\|"pass", ...}`   |
 | GET    | `/api/push/vapid-key`          | VAPID public key for push subscription     |
 | POST   | `/api/push/subscribe`          | store a Web Push subscription              |
@@ -171,7 +170,8 @@ All major planned features are implemented:
 - **Google Sign-In** — session cookies with HMAC-SHA256; dev login still
   available behind `-dev-login` flag.
 - **Email allowlist** — `ALLOWLIST_EMAILS=a@x.com,b@y.com` (inline) or
-  `ALLOWLIST_GCS=gs://bucket/file.txt` (refreshed every 5 min). Unset = open.
+  `ALLOWLIST_GCS=gs://bucket/file.txt` (refreshed every 5 min). Only gates
+  game creation; anyone can sign in and join existing games. Unset = open.
 - **Cloud Run deployment** — Terraform in `infra/`, 3-stage Dockerfile,
   scales to zero.
 - **Web Push notifications** — VAPID-based; server pings the next player
