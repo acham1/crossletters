@@ -256,6 +256,20 @@ func (s *Server) handleJoinGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, viewFor(updated, id.UserID))
+
+	// Notify existing players that someone joined (best-effort, non-blocking).
+	if s.deps.Push != nil {
+		for _, p := range updated.Players {
+			if p.UserID == id.UserID {
+				continue
+			}
+			go s.deps.Push.Notify(context.Background(), p.UserID, push.Notification{
+				Title: "crossletters",
+				Body:  id.Name + " joined your game!",
+				URL:   "/?game=" + updated.ID,
+			})
+		}
+	}
 }
 
 func (s *Server) handleGetGame(w http.ResponseWriter, r *http.Request) {
