@@ -210,7 +210,7 @@ func (s *Server) handleUserGames(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCreateGame(w http.ResponseWriter, r *http.Request) {
 	id, _ := identityFrom(r.Context())
 	if s.deps.Allowlist != nil && !s.deps.Allowlist.Contains(id.Email) {
-		writeErr(w, http.StatusForbidden, "your account is not allowed to create games — please talk to the person who invited you to learn about getting access or self-hosting")
+		writeErr(w, http.StatusForbidden, "your account is not allowed to create games — contact the site owner to join the list of approved game creators, or self-host your own instance")
 		return
 	}
 	var req CreateGameRequest
